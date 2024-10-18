@@ -10,6 +10,9 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 import json
 import pickle
+from scipy.stats import spearmanr
+import matplotlib.pyplot as plt
+ 
 
 class SurrogateModel:
 
@@ -22,7 +25,6 @@ class SurrogateModel:
         self.config_space = config_space
         self.df = None
         self.model = None
-        
     
     def identify_categorical_numerical(self, df):
         categorical_cols = []
@@ -71,6 +73,7 @@ class SurrogateModel:
         
         # Step 5: Split data into training and test sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+       
         # Step 6: Fit the model
         self.model = model.fit(X_train, y_train)
 
@@ -81,6 +84,17 @@ class SurrogateModel:
         print('saving the model')
         with open("external_surrogate_model.pkl", 'wb') as f:
             pickle.dump(model, f)
+
+        #Step 8: compute spearman correlation
+        corr, _ = spearmanr(y_test, y_pred)
+        print('Spearmans correlation: %.3f' % corr)
+        #Step 9: plot the spearman correlation
+        plt.scatter(y_test, y_pred)
+        plt.xlabel('Hold out set')
+        plt.ylabel('Predicted values')
+        plt.title('Spearman correlation')
+        plt.show()
+
         return self.model
         
       

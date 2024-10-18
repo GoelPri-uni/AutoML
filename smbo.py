@@ -256,6 +256,7 @@ if __name__ == '__main__':
     capital_phi = initial_perf(args)
     
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
+    config_space.seed(42) #fixed for plot reproducibility 
     anchor_size =  Constant("anchor_size", 1600)
     
     config_space.add_hyperparameter(anchor_size)

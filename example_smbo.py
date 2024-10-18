@@ -62,7 +62,7 @@ def add_anchor(config_space):
 
 def initial_perf(args):
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
-
+    config_space.seed(42) #fixed for plot reproducibility
     # Define other hyperparameters...
 
     # Define anchor_size as a hyperparameter

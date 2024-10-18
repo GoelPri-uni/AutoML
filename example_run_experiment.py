@@ -44,13 +44,15 @@ def run(args):
             results['random_search'].append(min(results['random_search'][-1], performance))
             random_search.update_runs((theta_new, performance))
 
+
+        
         plt.plot(range(len(results['random_search'])), results['random_search'])
         plt.yscale('log')
         plt.xlabel('Num iterations')
         plt.ylabel('Score')
         plt.title('Surrogate model score predictions with max_anchor size of ' + str(max_anchor_size))
         plt.show()
-
+        
 
 if __name__ == '__main__':
     run(parse_args())
