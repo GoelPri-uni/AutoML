@@ -42,6 +42,12 @@ def plot_halving(config_list):
     '''
     for lst in config_list:
         print(len(lst))
+        for config in lst:
+            try:
+                print(config['score'])
+            except KeyError:
+                print('no score available')
+
     return
 
 
@@ -72,7 +78,7 @@ def run(args):
     #anchor_sizes = [256, 512, 1024, 1600]
 
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file) 
-    config_samples = config_space.sample_configuration(100) #sample configurations to evaluate
+    config_samples = config_space.sample_configuration(20) #sample configurations to evaluate
     
     df = pd.read_csv(args.configurations_performance_file)
     
@@ -87,7 +93,7 @@ def run(args):
         config_log = [] # clean out the previous configs
         for config in config_samples: 
             #only the first time do the configs need to be transformed into a dict (from Config)
-            if anchor == 256: #automate better
+            if anchor == args.R[0]: #if we're dealing with the first anchor, samples need to be initialized from config space
                 theta_new = dict(config)
             else:
                 theta_new = config
@@ -98,18 +104,17 @@ def run(args):
             performance = external_surrogate.predict(theta_new)
             theta_new['score'] = performance
             config_log.append(theta_new)
-            #config_log[(str(theta_new))].append(min(config_log[(str(theta_new))][-1], performance))
 
         #print('results', config_log)
         print('one bracket done, anchor size: ', anchor)
 
-        # store configs for plotting
-        plot_list.append(config_log) #only store performances?
+        # store configs and their scores for plotting
+        plot_list.append(config_log) 
         
         # prune the worst performing configs
         best_configs = prune_worst(config_log, args)
         
-        # only use the pruned configs for the next anchor size
+        # only use the remaining configs for the next anchor size
         config_samples = best_configs
     
     plot_halving(plot_list)
