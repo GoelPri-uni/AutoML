@@ -19,17 +19,20 @@ def parse_args():
 
 
 def run(args):
+    #iterate over the different datasets 
     for dataset in args.configurations_performance_file:
        
         config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
         config_space.seed(42) #fixing the random seed for plot reproducibility
         random_search = RandomSearch(config_space)
+        
         df = pd.read_csv(dataset) #(args.configurations_performance_file)
         surrogate_model = SurrogateModel(config_space)
         #surrogate_model.fit(df)
-        max_anchor_size = max(df['anchor_size'].unique())
+        max_anchor_size = max(df['anchor_size'].unique()) #find out the max anchor size for each dataset
         print('max anchor size', max_anchor_size)
-        surrogate_model.fit(df[df['anchor_size'] == max_anchor_size])
+        surrogate_model.fit(df[df['anchor_size'] == max_anchor_size]) #fit the surrogate model only on the configurations that have the max anchor size
+        
         results = {
             'random_search': [1.0]   
         }

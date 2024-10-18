@@ -1,6 +1,3 @@
-import ConfigSpace
-
-import sklearn.impute
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
@@ -8,7 +5,6 @@ from sklearn.pipeline import Pipeline
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-import json
 import pickle
 from scipy.stats import spearmanr
 import matplotlib.pyplot as plt
@@ -16,17 +12,16 @@ import matplotlib.pyplot as plt
 
 class SurrogateModel:
 
-    # def __init__(self, config_space):
-    #     self.config_space = config_space
-    #     self.df = None
-    #     self.model = None
-
     def __init__(self, config_space):
         self.config_space = config_space
         self.df = None
         self.model = None
     
     def identify_categorical_numerical(self, df):
+        """
+        A function for identifying which columns have numerical and which categorical values in :param df:. 
+        """
+
         categorical_cols = []
         numerical_cols = []
 
@@ -49,12 +44,15 @@ class SurrogateModel:
         :param df: the dataframe with performances
         :return: Does not return anything, but stores the trained model in self.model
         """
+        #Step 1: Separate the dataset into features and target 
         df = df
         X = df.iloc[:, :-1]  # All columns except the last one(score)
         y = df.iloc[:, -1] # the last column, the performance values
         
+        #Step 2: Identify columns with categorical and numerical values 
         categorical_cols, numerical_cols = self.identify_categorical_numerical(X)
     
+        #Step 3: Setup the preprocessing tools
         categorical_transformer = OneHotEncoder(drop='first', handle_unknown='ignore')
         numerical_transformer = StandardScaler()
         
@@ -81,14 +79,17 @@ class SurrogateModel:
         y_pred = self.model.predict(X_test)
         mse = mean_squared_error(y_test, y_pred)
         r2 = r2_score(y_test, y_pred)
-        print('saving the model')
+
+        #Step 8: Save the trained model for loading later
+        print('Saving the model')
         with open("external_surrogate_model.pkl", 'wb') as f:
             pickle.dump(model, f)
 
-        #Step 8: compute spearman correlation
+        #Step 9: Compute spearman correlation
         rho, pvalue = spearmanr(y_test, y_pred)
         print('Spearmans correlation:{}, p-value: {}'.format(rho, pvalue))
-        #Step 9: plot the spearman correlation
+        
+        #Step 10: Plot the spearman correlation
         plt.scatter(y_test, y_pred)
         plt.xlabel('Hold out set')
         plt.ylabel('Predicted values')
@@ -105,29 +106,25 @@ class SurrogateModel:
         :param theta_new: a dict, where each key represents the hyperparameter (or anchor)
         :return: float, the predicted performance of theta new (which can be considered the ground truth)
         """
-        default_values = {}
-        
 
-        # Get the default value
-        default_value = {}
-        
+        #Step 1: Get the default values from the configspace to replace missing values
+        default_values = {}
+                
         for key, value in self.config_space.items():
             default_values[key] = self.config_space.get_hyperparameter(key).default_value
         
-        # Step 2: Find missing keys in the partial configuration
+        #Step 2: Find missing keys in the partial configuration
         missing_keys = [key for key in default_values.keys() if key not in theta_new]
 
-        # Step 3: Add missing keys with default values to the configuration
+        #Step 3: Add missing keys with default values to the configuration
         for key in missing_keys:
             theta_new[key] = default_values[key]
 
+        #Step 4: Transform theta_new into a dataframe and predict score
         df = pd.DataFrame([theta_new])
-        
-        
         y_pred = self.model.predict(df)
        
         #print("This is the prediction ",y_pred)
         return y_pred[0]
-        #raise NotImplementedError()
 
 
