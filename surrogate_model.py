@@ -86,8 +86,8 @@ class SurrogateModel:
             pickle.dump(model, f)
 
         #Step 8: compute spearman correlation
-        corr, _ = spearmanr(y_test, y_pred)
-        print('Spearmans correlation: %.3f' % corr)
+        rho, pvalue = spearmanr(y_test, y_pred)
+        print('Spearmans correlation:{}, p-value: {}'.format(rho, pvalue))
         #Step 9: plot the spearman correlation
         plt.scatter(y_test, y_pred)
         plt.xlabel('Hold out set')
