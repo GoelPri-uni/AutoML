@@ -37,7 +37,6 @@ def identify_categorical_numerical( df):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_space_file', type=str, default='lcdb_config_space_knn.json')
-    # max_anchor_size: connected to the configurations_perfor  mance_file. The max value upon which anchors are sampled
     parser.add_argument('--model_path', type=str, default='external_surrogate_model.pkl')
     return parser.parse_args()
 
@@ -74,16 +73,12 @@ def clean_configuration(config_space, theta):
         default_values[key] = config_space.get_hyperparameter(key).default_value
     
     
-    #active_hyperparameters = config_space.get_active_hyperparameters(theta)
-    
-    
     # Step 2: Find missing keys in the partial configuration
     missing_keys = [key for key in default_values.keys() if key not in theta]
     
     # Step 3: Add missing keys with default values to the configuration
     for key in missing_keys:
         theta[key] = default_values[key]
-        #theta[key] = config_space.get_hyperparameter(key).default_value
         
     return theta
 
@@ -156,7 +151,7 @@ class SequentialModelBasedOptimization(object):
             #prepare for training
             X= X_df.iloc[::]
             
-            #X = np.array([list(config.values()) for config, _ in self.R])  # Configurations as feature vectors
+            
             y = np.array([performance for _, performance in self.R])  # Error rates
             
             # Define a Gaussian Process model
@@ -186,20 +181,14 @@ class SequentialModelBasedOptimization(object):
         configuration
         """
         
-        #get configurations using random search as well
         
-        # theta_random = [dict(self.random_search.select_configuration()) for _ in range(10)]
-        # for each in theta_random:
-        #     each['anchor_size'] = max_anchor
-        # random_candidates = [clean_configuration(self.config_space, each_candidate) for each_candidate in theta_random]
-        
-        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(10)]  # You can adjust the number of samples
+        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(10)]  
         
         candidates = [clean_configuration(self.config_space, each_candidate) for each_candidate in candidates]
-        #candidates.extend(random_candidates)
+        
         candidate_configs = pd.DataFrame([candidate for candidate in candidates])
         
-        theta = candidate_configs.iloc[::]  # Apply the same pre-processing steps as in the model
+        theta = candidate_configs.iloc[::] 
         
         # Calculate the expected improvement for each candidate
         ei_values = self.expected_improvement(self.internal_surrogate_model, self.theta_inc_performance, theta)
