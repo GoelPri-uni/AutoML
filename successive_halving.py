@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 from surrogate_model import SurrogateModel
 
 
+#can we change the value of 1 in the first question
+#what are the names of the datasets
+
 def identify_categorical_numerical( df):
         categorical_cols = []
         numerical_cols = []
@@ -127,6 +130,7 @@ class SuccessiveHalvingBasedOptimization(object):
         thetas = candidate_configs.iloc[::]  
         return thetas
 
+
     def pruning(self, performances):
         """
         get the top half best performances and return the positions
@@ -145,19 +149,32 @@ class SuccessiveHalvingBasedOptimization(object):
         :param thetas: all the initial set of sample configurations 
         
         """
-        iteration = 0
+        all_anchor_sizes = []
+        all_performances = []
+        iterations = []
         positions = len(thetas)
         
         #list of anchor sizes for the given iterations including the full training set size
         self.all_anchor_sizes = np.linspace(min(self.anchor_sizes), max(self.anchor_sizes), self.total_iterations, dtype=int)
         
+        print(self.all_anchor_sizes)
+        iteration = 0
+
         
         for anchor_ in self.all_anchor_sizes:
             
-        
             thetas['anchor_size'] = anchor_
             performances = self.model.predict(thetas)
             positions = self.pruning(performances)
+            
+            current_anchor_size = [anchor_] * len(positions)
+            current_performances = performances[positions]
+            
+            # Append data for plotting
+            all_anchor_sizes.extend(current_anchor_size)
+            all_performances.extend(current_performances)
+            iterations.extend([iteration] * len(positions))
+            
             
             sorted_performances = performances[positions]
             thetas = thetas.iloc[positions]
@@ -166,7 +183,30 @@ class SuccessiveHalvingBasedOptimization(object):
             if len(positions) == 1:
                 self.best_configuration = thetas
                 self.best_performance = sorted_performances[0]
+                
+                anchor_sizes = np.array(all_anchor_sizes)
+                performances = np.array(all_performances)
 
+                # Now, plot the line graph
+                plt.figure(figsize=(10, 6))
+
+                # Plot performance for each halving step
+                for iteration_num in range(1, iteration + 1):
+                    mask = np.array(iterations) == iteration_num
+                    plt.plot(anchor_sizes[mask], performances[mask], marker='o', label=f'Iteration {iteration_num}')
+
+                plt.xlabel('Anchor Size')
+                plt.ylabel('Performance')
+                plt.title('Performance vs Anchor Size (Successive Halving)')
+                plt.grid(True)
+                plt.legend()
+                plt.show()
+                break
+           
+            
+        
+    def plot_values():
+        pass
 
 if __name__ == '__main__':
     args = parse_args()
@@ -180,3 +220,4 @@ if __name__ == '__main__':
     s_h_method.prune_update_optimize(thetas)
     print(s_h_method.best_configuration)
     print(s_h_method.best_performance)
+    
