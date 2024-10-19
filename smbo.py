@@ -5,7 +5,7 @@ import typing
 import random
 #from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from example_smbo import initial_perf, add_anchor, test_external_model
+from example_smbo import initial_perf, test_external_model
 import argparse
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel as C, RBF
@@ -18,6 +18,8 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 from random_search import RandomSearch
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel as C
+from surrogate_model import SurrogateModel
+
 def identify_categorical_numerical( df):
         categorical_cols = []
         numerical_cols = []
@@ -40,29 +42,6 @@ def parse_args():
     parser.add_argument('--model_path', type=str, default='external_surrogate_model.pkl')
     return parser.parse_args()
 
-def input_preprocessor(X_df):
-    
-    categorical_cols, numerical_cols = identify_categorical_numerical(X_df)
-    
-    # Define transformers
-    categorical_transformer = OneHotEncoder(drop='first', handle_unknown='ignore')
-    numerical_transformer = StandardScaler()
-
-    # Create a preprocessing pipeline
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numerical_transformer, numerical_cols),
-            ('cat', categorical_transformer, categorical_cols)
-        ]
-    )
-    return preprocessor
-
-def dynamic_preprocessor(X_df):
-    """
-    A wrapper for creating the preprocessor based on the data passed to the pipeline.
-    """
-    preprocessor = input_preprocessor(X_df)
-    return preprocessor
 
 def clean_configuration(config_space, theta):
     default_values = {}
@@ -82,14 +61,10 @@ def clean_configuration(config_space, theta):
         
     return theta
 
-def test_real_world_model(config_space, theta_new):
-    model_path = parse_args().model_path
-    performance = test_external_model(config_space, model_path, theta_new)  
-    return performance
 
 class SequentialModelBasedOptimization(object):
 
-    def __init__(self, config_space, max_anchor):
+    def __init__(self, config_space, max_anchor, ex_surrogate_class):
         """
         Initializes empty variables for the model, the list of runs (capital R), and the incumbent
         (theta_inc being the best found hyperparameters, theta_inc_performance being the performance
@@ -104,7 +79,7 @@ class SequentialModelBasedOptimization(object):
         self.random_search = RandomSearch(self.config_space)
         self.max_anchor = max_anchor
         self.all_performances = []
-        
+        self.ex_surrogate_class = ex_surrogate_class
     def initialize(self, capital_phi: typing.List[typing.Tuple[typing.Dict, float]]) -> None:
         """
         Initializes the model with a set of initial configurations, before it can make recommendations
@@ -182,7 +157,7 @@ class SequentialModelBasedOptimization(object):
         """
         
         
-        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(10)]  
+        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(20)]  
         
         candidates = [clean_configuration(self.config_space, each_candidate) for each_candidate in candidates]
         
@@ -218,7 +193,7 @@ class SequentialModelBasedOptimization(object):
         mu, sigma = model_pipeline.predict(theta, return_std=True)
         if f_star == None:
             f_star = mu
-        xi = 0.01  # Exploration parameter
+        xi = 0.03  # Exploration parameter
         f_star_exploration = f_star + xi
         sigma = np.maximum(sigma, 1e-9)  # Avoid division by zero
         
@@ -230,9 +205,10 @@ class SequentialModelBasedOptimization(object):
         
         return ei
         
-    def optimize(self, theta_new):
-        performance = test_real_world_model(self.config_space, theta_new)
+    def optimize(self,  theta_new):
+        #performance = test_real_world_model(self.config_space, theta_new)
         
+        performance = self.ex_surrogate_class.external_surrogate_predict(theta_new)
         return performance
     
         
@@ -256,23 +232,71 @@ class SequentialModelBasedOptimization(object):
         self.R.append(run)
         
         
-        if run[1] < self.theta_inc_performance and run[1] < random_cand_perf:
+        if run[1] < self.theta_inc_performance:
             self.theta_inc_performance = run[1]
             self.theta_inc = run[0]
         
         self.result_performance.append(self.theta_inc_performance)
+
+import pickle
+
+class ExternalSurrogate():
+    def __init__(self, args):
+        model_path = args.model_path
+        external_model = self.load_model(model_path)
+        self.sg = SurrogateModel(config_space=config_space)
+        self.sg.model = external_model
         
+    def external_surrogate_predict(self, theta):
+        theta_val = dict(theta)
+        error_rate = self.sg.predict(theta_val)
+        return error_rate
+    
+    def load_model(self, filename):
+        """ Load the model from a file using pickle """
+        with open(filename, 'rb') as f:
+            model = pickle.load(f)
+        return model
+    
+    def get_initial_sample_config(self, config_space):
+            capital_phi = []
+            
+            
+            for _ in range(20):  # Sample 10 initial configurations
+                config = config_space.sample_configuration()
+                
+                
+            
+                
+                self.sg.config_space = config_space
+                theta_val = dict(config)
+                error_rate = self.sg.predict(theta_val)
+                capital_phi.append((theta_val, error_rate))
+                
+            return capital_phi
+
+
+
+
+
+
+    
 if __name__ == '__main__':
     args = parse_args()
-    capital_phi = initial_perf(args)
+    
     
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
+    
+    
     max_anchor = 1600
     
     anchor_size =  Constant("anchor_size", max_anchor)
     
     config_space.add_hyperparameter(anchor_size)
-    smbo = SequentialModelBasedOptimization (config_space=config_space, max_anchor=max_anchor)
+    ex_surrogate_class = ExternalSurrogate(args=args)
+    capital_phi = ex_surrogate_class.get_initial_sample_config(config_space)
+    
+    smbo = SequentialModelBasedOptimization (config_space=config_space, max_anchor=max_anchor, ex_surrogate_class=ex_surrogate_class)
     
     
     smbo.initialize(capital_phi)
@@ -289,6 +313,13 @@ if __name__ == '__main__':
        
         smbo.all_performances.append(performance)
     
+    
+    width = max(6, total_budget // 10)  # Dynamically calculate width
+    height = 6  # Set a constant height
+
+    # Create a figure with dynamic size
+    plt.figure(figsize=(width, height))
+
     plt.plot(range(total_budget), smbo.result_performance, color='blue', label='Iterative Best Performances so far')
     
     plt.plot(range(total_budget), smbo.all_performances, color='black', label = 'All SMBO performances')
@@ -314,9 +345,10 @@ if __name__ == '__main__':
     plt.yticks(yticks)
     plt.xlabel('Budget')
     plt.ylabel('Guassian Regressor Performance')
-    plt.title(' Performances tracked during SMBO')
-
-    plt.legend()
+    plt.title('Performances tracked during SMBO')
     plt.grid(True)
+    plt.legend()
+    
+    plt.tight_layout()
     plt.show()
     
