@@ -199,9 +199,11 @@ class SequentialModelBasedOptimization(object):
         
         sigma_noise = np.maximum(sigma, 1e-2)
         # Calculate the Expected Improvement (EI)
-        z = (f_star_exploration - mu) / sigma_noise
+        # z = (f_star_exploration - mu) / sigma_noise
+        z = (f_star - mu) / sigma
         
-        ei = (f_star_exploration - mu) * norm.cdf(z) + sigma_noise * norm.pdf(z)
+        # ei = (f_star_exploration - mu) * norm.cdf(z) + sigma_noise * norm.pdf(z)
+        ei = (f_star- mu) * norm.cdf(z) + sigma * norm.pdf(z)
         
         return ei
         
@@ -221,13 +223,13 @@ class SequentialModelBasedOptimization(object):
         """
         
         #adding random candidate to R for new exploration area to avoid stagnant behaviour
-        random_candidate = self.config_space.sample_configuration().get_dictionary()  
+        # random_candidate = self.config_space.sample_configuration().get_dictionary()  
         
-        candidate = clean_configuration(self.config_space, random_candidate)
+        # candidate = clean_configuration(self.config_space, random_candidate)
         
-        random_cand_perf = smbo.optimize(candidate)
+        # random_cand_perf = smbo.optimize(candidate)
         
-        self.R.append((candidate, random_cand_perf))
+        # self.R.append((candidate, random_cand_perf))
         
         self.R.append(run)
         
@@ -241,7 +243,7 @@ class SequentialModelBasedOptimization(object):
 import pickle
 
 class ExternalSurrogate():
-    def __init__(self, args):
+    def __init__(self, args, config_space):
         model_path = args.model_path
         external_model = self.load_model(model_path)
         self.sg = SurrogateModel(config_space=config_space)
@@ -262,12 +264,8 @@ class ExternalSurrogate():
             capital_phi = []
             
             
-            for _ in range(20):  # Sample 10 initial configurations
-                config = config_space.sample_configuration()
-                
-                
-            
-                
+            for _ in range(20):  # Sample 20 initial configurations
+                config = config_space.sample_configuration()    
                 self.sg.config_space = config_space
                 theta_val = dict(config)
                 error_rate = self.sg.predict(theta_val)
@@ -276,58 +274,51 @@ class ExternalSurrogate():
             return capital_phi
 
 
-
-
-
-
+def eval_smbo(args, max_anchor, total_budget):
     
-if __name__ == '__main__':
-    args = parse_args()
-    
+
     
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
     
     
-    max_anchor = 1600
+   
     
     anchor_size =  Constant("anchor_size", max_anchor)
     
     config_space.add_hyperparameter(anchor_size)
-    ex_surrogate_class = ExternalSurrogate(args=args)
+    ex_surrogate_class = ExternalSurrogate(args=args, config_space=config_space)
     capital_phi = ex_surrogate_class.get_initial_sample_config(config_space)
     
     smbo = SequentialModelBasedOptimization (config_space=config_space, max_anchor=max_anchor, ex_surrogate_class=ex_surrogate_class)
     
-    
     smbo.initialize(capital_phi)
-    total_budget = 50
-    budget_left = 50
+    
+    budget_left = total_budget
 
- 
+
     while budget_left:
         smbo.fit_model()
         theta_new = smbo.select_configuration() 
         performance = smbo.optimize(theta_new)
         smbo.update_runs((theta_new , performance))
-        budget_left = budget_left-1
-       
         smbo.all_performances.append(performance)
+        
+        budget_left = budget_left-1
     
+        
+    return smbo.result_performance
     
-    width = max(6, total_budget // 10)  # Dynamically calculate width
-    height = 6  # Set a constant height
 
-    # Create a figure with dynamic size
-    plt.figure(figsize=(width, height))
+def plot_value(total_budget, all_performances):
+    
+    plt.figure(figsize=(6, 6))
+    plt.plot(range(total_budget), all_performances, color='blue', label='Iterative Best Performances so far')
+    
 
-    plt.plot(range(total_budget), smbo.result_performance, color='blue', label='Iterative Best Performances so far')
     
-    plt.plot(range(total_budget), smbo.all_performances, color='black', label = 'All SMBO performances')
-    
-    
-    min_performance = min(smbo.result_performance)
+    min_performance = min(all_performances)
 
-    min_budget = smbo.result_performance.index(min_performance)
+    min_budget = all_performances.index(min_performance)
 
     plt.scatter(min_budget, min_performance, color='red', zorder=5, label=' Best Performance')
 
@@ -351,4 +342,11 @@ if __name__ == '__main__':
     
     plt.tight_layout()
     plt.show()
+    
+if __name__ == "__main__":
+    args = parse_args()
+    max_anchor = 1600
+    total_budget = 200
+    result_performances = eval_smbo(args, max_anchor=max_anchor, total_budget=total_budget)
+    plot_value(total_budget, result_performances)
     
