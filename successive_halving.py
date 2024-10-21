@@ -8,8 +8,9 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 import matplotlib.pyplot as plt
 from surrogate_model import SurrogateModel
+from operator import itemgetter
 
-
+import math
 #can we change the value of 1 in the first question
 #what are the names of the datasets
 
@@ -139,7 +140,11 @@ class SuccessiveHalvingBasedOptimization(object):
         return sorted_indices
         
     
-        
+    
+    def select_evenly_spaced_elements(self, lst, n):
+        step_size = (len(lst) - 1) / (n - 1)
+        return [round(i * step_size) for i in range(n)]
+     
     def prune_update_optimize(self, thetas):
         """
         Finalize the anchor sizes to experiment considering the full training set size. 
@@ -149,61 +154,105 @@ class SuccessiveHalvingBasedOptimization(object):
         :param thetas: all the initial set of sample configurations 
         
         """
-        all_anchor_sizes = []
-        all_performances = []
-        iterations = []
-        positions = len(thetas)
         
+         
         #list of anchor sizes for the given iterations including the full training set size
-        self.all_anchor_sizes = np.linspace(min(self.anchor_sizes), max(self.anchor_sizes), self.total_iterations, dtype=int)
         
+        self.all_anchor_sizes = np.linspace(min(self.anchor_sizes), max(self.anchor_sizes), self.total_iterations-1, dtype=int)
         print(self.all_anchor_sizes)
+        
         iteration = 0
 
+        current_performances_index = np.full(len(thetas), np.nan)
+        thetas1 = thetas.copy()
+        
+        all_performances = []
+        anchors_travelled = []
         
         for anchor_ in self.all_anchor_sizes:
             
-            thetas['anchor_size'] = anchor_
-            performances = self.model.predict(thetas)
-            positions = self.pruning(performances)
-            
-            current_anchor_size = [anchor_] * len(positions)
-            current_performances = performances[positions]
-            
-            # Append data for plotting
-            all_anchor_sizes.extend(current_anchor_size)
-            all_performances.extend(current_performances)
-            iterations.extend([iteration] * len(positions))
-            
-            
-            sorted_performances = performances[positions]
-            thetas = thetas.iloc[positions]
-            iteration += 1
-
-            if len(positions) == 1:
-                self.best_configuration = thetas
-                self.best_performance = sorted_performances[0]
-                
-                anchor_sizes = np.array(all_anchor_sizes)
-                performances = np.array(all_performances)
-
-                # Now, plot the line graph
-                plt.figure(figsize=(10, 6))
-
-                # Plot performance for each halving step
-                for iteration_num in range(1, iteration + 1):
-                    mask = np.array(iterations) == iteration_num
-                    plt.plot(anchor_sizes[mask], performances[mask], marker='o', label=f'Iteration {iteration_num}')
-
-                plt.xlabel('Anchor Size')
-                plt.ylabel('Performance')
-                plt.title('Performance vs Anchor Size (Successive Halving)')
-                plt.grid(True)
-                plt.legend()
-                plt.show()
-                break
+            thetas1['anchor_size'] = anchor_
+            performances = self.model.predict(thetas1)
            
+            if iteration == 0:
+                current_performances_index = performances
+               
             
+            positions = self.pruning(performances)
+            sorted_performances = performances[positions]
+            
+            thetas1 = thetas1.iloc[positions]
+            
+            current_index_list = thetas1.index.to_list()
+            current_performances_index = np.full(len(thetas), np.nan)
+            current_performances_index[current_index_list] = sorted_performances
+            all_performances.append(current_performances_index)
+            
+            
+
+            anchors_travelled.append(anchor_)
+            
+            print(sorted_performances)
+            print(anchor_)
+            
+            if len(sorted_performances) == 1:
+                
+                self.best_configuration = thetas1
+                self.best_performance = sorted_performances[0]
+                self.best_anchor = anchor_
+                
+                return all_performances,anchors_travelled
+            iteration += 1
+    
+   
+    
+    def plot_successive_halving(self , all_performances, anchors_travelled):
+
+        #prepare to plot
+        plt.figure(figsize=(10, 6))
+        
+        list_anchors_indexes = self.select_evenly_spaced_elements(self.all_anchor_sizes, int(len(self.all_anchor_sizes)//2)+1)
+        
+        list_anchors_indexes = list_anchors_indexes[1:]
+        anchors_x =  list(itemgetter(*list_anchors_indexes)(all_performances))
+        df = pd.DataFrame(anchors_x)
+        
+        #df = pd.DataFrame(all_performances)
+        
+        #giving names to create columns for dataframe to plot the values wrt performances and anchor
+        df.columns = [f"Config_{i+1}" for i in range(len(all_performances[0]))]
+        
+        plt.figure(figsize=(10, 6))
+
+        #plot the performances
+        for config in df.columns:  
+            plt.plot(df.index, df[config], marker='o', linestyle='-')
+            
+
+        # Adding labels, title, and legend
+        plt.xlabel('Anchors in Successive Halving)')
+        plt.ylabel('Performance')
+        plt.title('Successive Halving: Performance Progression')
+        plt.xticks(ticks= list(range(len(list_anchors_indexes))),labels= [self.all_anchor_sizes[i] for i in list_anchors_indexes])  # Set iteration points on the x-axis
+        
+        yticks = list(plt.yticks()[0])
+        
+        if self.best_performance not in yticks:
+            yticks.append(self.best_performance)
+            yticks = sorted(yticks)  # Sort the ticks to keep them in order
+            
+        plt.axhline(y=self.best_performance, color='red', linestyle='--', label=f'Best Score: {self.best_performance:.6f}')
+        
+
+            # Add legend to show which line corresponds to which configuration
+        plt.yticks(yticks)
+        
+        plt.legend()
+
+        # Show plot
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
         
     def plot_values():
         pass
@@ -217,7 +266,8 @@ if __name__ == '__main__':
     
     s_h_method.initialize()
     thetas = s_h_method.create_initial_configurations()
-    s_h_method.prune_update_optimize(thetas)
+    all_performances, anchors_travelled = s_h_method.prune_update_optimize(thetas)
     print(s_h_method.best_configuration)
     print(s_h_method.best_performance)
-    
+    s_h_method.plot_successive_halving(all_performances, anchors_travelled)
+   
