@@ -16,6 +16,7 @@ class SurrogateModel:
         self.config_space = config_space
         self.df = None
         self.model = None
+        self.spearman = None
     
     def identify_categorical_numerical(self, df):
         """
@@ -34,6 +35,9 @@ class SurrogateModel:
                 numerical_cols.append(col)
         
         return categorical_cols, numerical_cols
+    
+    def get_spearman(self):
+        return self.spearman
     
     
     def fit(self, df):
@@ -86,15 +90,17 @@ class SurrogateModel:
             pickle.dump(model, f)
 
         #Step 9: Compute spearman correlation
-        rho, pvalue = spearmanr(y_test, y_pred)
-        print('Spearmans correlation:{}, p-value: {}'.format(rho, pvalue))
+        self.spearman, pvalue = spearmanr(y_test, y_pred)
+        print('Spearmans correlation:{}, p-value: {}'.format(self.spearman, pvalue))
         
         #Step 10: Plot the spearman correlation
+        '''
         plt.scatter(y_test, y_pred)
         plt.xlabel('Hold out set')
         plt.ylabel('Predicted values')
         plt.title('Spearman correlation')
         plt.show()
+        '''
 
         return self.model
         

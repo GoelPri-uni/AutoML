@@ -20,8 +20,9 @@ def parse_args():
 
 def run(args):
     #iterate over the different datasets 
+    dataset_names = ['Learning Curve Database', 'Letter', 'Balance-scale', 'Amazon commerce review']
     for dataset in args.configurations_performance_file:
-       
+        
         config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
         config_space.seed(42) #fixing the random seed for plot reproducibility
         random_search = RandomSearch(config_space)
@@ -47,13 +48,28 @@ def run(args):
             results['random_search'].append(min(results['random_search'][-1], performance))
             random_search.update_runs((theta_new, performance))
 
-
+        smallest_score = min(results['random_search'])
+        # Get the last number in the list
+        first_iter_found = results['random_search'][-1]
+        # Find the earliest index of the best score
+        earliest_index = results['random_search'].index(first_iter_found) #the first value in the list does not count as an iteration
         
+        #dataset_name = dataset_names[i]
+        dataset_idx = args.configurations_performance_file.index(str(dataset))
+        spearman_rho = surrogate_model.get_spearman()
+        #custom_legend = [plt.Line2D([0], [0], color='none', label="Spearman's rho="+str(spearman_rho))]
+    
+
+        print('retrieved rho: ', spearman_rho)
+
         plt.plot(range(len(results['random_search'])), results['random_search'])
         plt.yscale('log')
         plt.xlabel('Num iterations')
         plt.ylabel('Score')
-        plt.title('Surrogate model score predictions on ' + str(dataset) + '\n Max anchor size: ' + str(max_anchor_size))
+        plt.title('Surrogate model score predictions on ' + str(dataset_names[dataset_idx]) + '\n Max anchor size: ' + str(max_anchor_size))
+        plt.scatter(earliest_index, smallest_score, color='red', zorder=5, label=' Best score='+str(round(smallest_score,3))+", \n iteration="+str(earliest_index)) #+ "\n Spearman's rho="+str(round(spearman_rho,3)))
+        plt.text(312, 0.7, 'Spearman correlation='+str(round(spearman_rho,3)), fontsize=9.5, bbox=dict(facecolor='white', alpha=0.5))
+        plt.legend()
         plt.show()
         
 
