@@ -159,7 +159,7 @@ class SuccessiveHalvingBasedOptimization(object):
         #list of anchor sizes for the given iterations including the full training set size
         
         self.all_anchor_sizes = np.linspace(min(self.anchor_sizes), max(self.anchor_sizes), self.total_iterations-1, dtype=int)
-        print(self.all_anchor_sizes)
+        
         
         iteration = 0
 
@@ -192,8 +192,7 @@ class SuccessiveHalvingBasedOptimization(object):
 
             anchors_travelled.append(anchor_)
             
-            print(sorted_performances)
-            print(anchor_)
+            
             
             if len(sorted_performances) == 1:
                 

@@ -332,7 +332,7 @@ if __name__ == '__main__':
     plt.scatter(min_budget, min_performance, color='red', zorder=5, label=' Best Performance')
 
     # Add a horizontal line at the minimum performance point
-    plt.axhline(y=min_performance, color='red', linestyle='--', label=f'Min: {min_performance:.6f}')
+    plt.axhline(y=min_performance, color='red', linestyle='--', label=f'Best Score: {min_performance:.6f}')
     # Get the current y-ticks
     yticks = list(plt.yticks()[0])
 
