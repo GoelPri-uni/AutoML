@@ -83,11 +83,11 @@ class Aggregator():
         '''
 
         plt.plot(range(len(mean_values_RS)-1), mean_values_RS[1:], label='Random Search mean scores')
-        plt.scatter(iteration_RS, best_RS, color='red') #zorder=5, label=' Best score='+str(round(smallest_score,3))+", \n iteration="+str(earliest_index)) 
+        plt.scatter(iteration_RS, best_RS, color='red', label='Mean best score Random search=' + str(round(best_RS,3))) #zorder=5, label=' Best score='+str(round(smallest_score,3))+", \n iteration="+str(earliest_index)) 
         plt.fill_between(range(len(mean_values_RS)-1), (np.array(mean_values_RS[1:]) + np.array(std_RS[1:])), (np.array(mean_values_RS[1:]) - np.array(std_RS[1:])), alpha=0.3)
 
         plt.plot(range(len(mean_values_smbo)), mean_values_smbo, label='SMBO mean scores')
-        plt.scatter(iteration_smbo, best_smbo, color='red')     
+        plt.scatter(iteration_smbo, best_smbo, marker="^", color='red', label='Mean best score SMBO=' + str(round(best_smbo,3)))     
         plt.fill_between(range(len(mean_values_smbo)), (np.array(mean_values_smbo) + np.array(std_smbo)), (np.array(mean_values_smbo) - np.array(std_smbo)), alpha=0.3)
    
         #plt.ylim(0,1)
