@@ -14,19 +14,26 @@ def parse_args():
 
     # max_anchor_size: connected to the configurations_performance_file. The max value upon which anchors are sampled
     parser.add_argument('--max_anchor_size', type=int, default=1600)
-    parser.add_argument('--num_iterations', type=int, default=500)
+    parser.add_argument('--num_iterations', type=int, default=200)
 
     return parser.parse_args()
 
 
-def run(args, test_dataset):
+def run(args, aggregator_request=False, test_dataset='config_performances_dataset-6.csv'):
     #iterate over the different datasets 
     dataset_names = ['Learning Curve Database', 'Letter', 'Balance-scale', 'Amazon commerce review']
 
-    for dataset in args.configurations_performance_file:
+    if aggregator_request:
+        dataset_lst = [test_dataset]
+    else:
+        dataset_lst = args.configurations_performance_file
+
+
+
+    for dataset in dataset_lst:
         
         config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
-        config_space.seed(42) #fixing the random seed for plot reproducibility
+        #config_space.seed(42) #fixing the random seed for plot reproducibility
         random_search = RandomSearch(config_space)
         
         df = pd.read_csv(dataset) #(args.configurations_performance_file)
@@ -50,6 +57,10 @@ def run(args, test_dataset):
             results['random_search'].append(min(results['random_search'][-1], performance))
             random_search.update_runs((theta_new, performance))
 
+        
+        if aggregator_request:
+            return results
+        
         #Get the smallest score that was found
         smallest_score = min(results['random_search'])
         # Find the earliest index of the best score
@@ -81,9 +92,9 @@ def run(args, test_dataset):
         plt.show()
         
 
-def main():
-    run(parse_args(), test_dataset='config_performances_dataset-6.csv')
+#def main():
+    #run(parse_args())
 
 if __name__ == '__main__':
-    #run(parse_args())
-    main()
+    run(parse_args())
+    #main()
