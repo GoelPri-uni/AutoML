@@ -19,9 +19,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def run(args):
+def run(args, test_dataset):
     #iterate over the different datasets 
     dataset_names = ['Learning Curve Database', 'Letter', 'Balance-scale', 'Amazon commerce review']
+
     for dataset in args.configurations_performance_file:
         
         config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
@@ -81,7 +82,7 @@ def run(args):
         
 
 def main():
-    run(parse_args())
+    run(parse_args(), test_dataset='config_performances_dataset-6.csv')
 
 if __name__ == '__main__':
     #run(parse_args())
