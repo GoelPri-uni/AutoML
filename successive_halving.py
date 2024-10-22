@@ -82,7 +82,7 @@ def clean_configuration(config_space, theta):
 
 class SuccessiveHalvingBasedOptimization(object):
 
-    def __init__(self, config_space):
+    def __init__(self, config_space, no_samples):
         """
         Initializes empty variables for the model, best performance and configuration , the first set of thetas and considering the total samples as 4000 for experiments
         """
@@ -93,7 +93,7 @@ class SuccessiveHalvingBasedOptimization(object):
         self.model = None
         
         self.thetas = None
-        self.total_samples = 4000
+        self.total_samples = no_samples
         
         
         
@@ -268,10 +268,10 @@ class SuccessiveHalvingBasedOptimization(object):
         plt.tight_layout()
         plt.show()
         
-def eval_successive(args):
+def eval_successive(args, no_samples):
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
     config_space.seed(42)
-    s_h_method =  SuccessiveHalvingBasedOptimization(config_space=config_space)
+    s_h_method =  SuccessiveHalvingBasedOptimization(config_space=config_space, no_samples=no_samples)
     
     s_h_method.initialize()
     thetas = s_h_method.create_initial_configurations()
@@ -285,8 +285,8 @@ def eval_successive(args):
     
 if __name__ == '__main__':
     args = parse_args()
-    
-    s_h_method = eval_successive(args)
+    no_samples = 4000
+    s_h_method = eval_successive(args, no_samples)
     print(s_h_method.best_configuration)
     print(s_h_method.best_performance)
     
