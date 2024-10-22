@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from random_search import RandomSearch
 from surrogate_model import SurrogateModel
+import numpy as np
 
 
 def parse_args():
@@ -48,30 +49,40 @@ def run(args):
             results['random_search'].append(min(results['random_search'][-1], performance))
             random_search.update_runs((theta_new, performance))
 
+        #Get the smallest score that was found
         smallest_score = min(results['random_search'])
-        # Get the last number in the list
-        first_iter_found = results['random_search'][-1]
         # Find the earliest index of the best score
-        earliest_index = results['random_search'].index(first_iter_found) #the first value in the list does not count as an iteration
+        earliest_index = results['random_search'].index(smallest_score) #the first value in the list does not count as an iteration
+        #print('score and iter ', smallest_score, earliest_index)
         
-        #dataset_name = dataset_names[i]
         dataset_idx = args.configurations_performance_file.index(str(dataset))
         spearman_rho = surrogate_model.get_spearman()
         #custom_legend = [plt.Line2D([0], [0], color='none', label="Spearman's rho="+str(spearman_rho))]
-    
+        
+        
+        # Get the current y-ticks
+        yticks = np.linspace(min(results['random_search']), max(results['random_search'][1:]), num=6) #list(set(results['random_search'][1:]))
 
-        print('retrieved rho: ', spearman_rho)
+        print('yticks ', yticks)
 
-        plt.plot(range(len(results['random_search'])), results['random_search'])
-        plt.yscale('log')
+        plt.plot(range(len(results['random_search'])-1), results['random_search'][1:])
+        #plt.ylim(0,1)
+        plt.yticks(yticks)
+        #plt.yscale('log')
         plt.xlabel('Num iterations')
         plt.ylabel('Score')
         plt.title('Surrogate model score predictions on ' + str(dataset_names[dataset_idx]) + '\n Max anchor size: ' + str(max_anchor_size))
         plt.scatter(earliest_index, smallest_score, color='red', zorder=5, label=' Best score='+str(round(smallest_score,3))+", \n iteration="+str(earliest_index)) #+ "\n Spearman's rho="+str(round(spearman_rho,3)))
-        plt.text(312, 0.7, 'Spearman correlation='+str(round(spearman_rho,3)), fontsize=9.5, bbox=dict(facecolor='white', alpha=0.5))
+        plt.annotate('Spearman rho='+str(round(spearman_rho,3)), [320, yticks[-3]])
+        plt.axhline(y=min(results['random_search']), color='red', linestyle='--', label='Best score')
         plt.legend()
+        plt.tight_layout()
         plt.show()
         
 
-if __name__ == '__main__':
+def main():
     run(parse_args())
+
+if __name__ == '__main__':
+    #run(parse_args())
+    main()
