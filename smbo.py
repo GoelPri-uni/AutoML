@@ -5,7 +5,7 @@ import typing
 import random
 #from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from example_smbo import initial_perf, add_anchor, test_external_model
+from example_smbo import initial_perf, test_external_model
 import argparse
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel as C, RBF
@@ -16,7 +16,9 @@ import math
 from scipy.stats import norm
 
 import matplotlib.pyplot as plt
-
+from random_search import RandomSearch
+from sklearn.gaussian_process.kernels import Matern, ConstantKernel as C
+from surrogate_model import SurrogateModel
 
 def identify_categorical_numerical( df):
         categorical_cols = []
@@ -37,33 +39,11 @@ def identify_categorical_numerical( df):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_space_file', type=str, default='lcdb_config_space_knn.json')
-    # max_anchor_size: connected to the configurations_perfor  mance_file. The max value upon which anchors are sampled
     parser.add_argument('--model_path', type=str, default='external_surrogate_model.pkl')
+    parser.add_argument('--configurations_performance_file', type=str, default='config-performances/config_performances_dataset-6.csv')
+    
     return parser.parse_args()
 
-def input_preprocessor(X_df):
-    
-    categorical_cols, numerical_cols = identify_categorical_numerical(X_df)
-    
-    # Define transformers
-    categorical_transformer = OneHotEncoder(drop='first', handle_unknown='ignore')
-    numerical_transformer = StandardScaler()
-
-    # Create a preprocessing pipeline
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numerical_transformer, numerical_cols),
-            ('cat', categorical_transformer, categorical_cols)
-        ]
-    )
-    return preprocessor
-
-def dynamic_preprocessor(X_df):
-    """
-    A wrapper for creating the preprocessor based on the data passed to the pipeline.
-    """
-    preprocessor = input_preprocessor(X_df)
-    return preprocessor
 
 def clean_configuration(config_space, theta):
     default_values = {}
@@ -74,27 +54,19 @@ def clean_configuration(config_space, theta):
         default_values[key] = config_space.get_hyperparameter(key).default_value
     
     
-    #active_hyperparameters = config_space.get_active_hyperparameters(theta)
-    
-    
     # Step 2: Find missing keys in the partial configuration
     missing_keys = [key for key in default_values.keys() if key not in theta]
     
     # Step 3: Add missing keys with default values to the configuration
     for key in missing_keys:
         theta[key] = default_values[key]
-        #theta[key] = config_space.get_hyperparameter(key).default_value
         
     return theta
 
-def test_real_world_model(config_space, theta_new):
-    model_path = parse_args().model_path
-    performance = test_external_model(config_space, model_path, theta_new)  
-    return performance
 
 class SequentialModelBasedOptimization(object):
 
-    def __init__(self, config_space):
+    def __init__(self, config_space, max_anchor, ex_surrogate_class):
         """
         Initializes empty variables for the model, the list of runs (capital R), and the incumbent
         (theta_inc being the best found hyperparameters, theta_inc_performance being the performance
@@ -106,6 +78,10 @@ class SequentialModelBasedOptimization(object):
         self.theta_inc_performance = None
         self.internal_surrogate_model = None
         self.result_performance = []
+        self.random_search = RandomSearch(self.config_space)
+        self.max_anchor = max_anchor
+        self.all_performances = []
+        self.ex_surrogate_class = ex_surrogate_class
     def initialize(self, capital_phi: typing.List[typing.Tuple[typing.Dict, float]]) -> None:
         """
         Initializes the model with a set of initial configurations, before it can make recommendations
@@ -138,7 +114,7 @@ class SequentialModelBasedOptimization(object):
             #scaling of data
             configurations = [item[0] for item in self.R]
             X_df = pd.DataFrame(configurations)
-            print(X_df)
+        
             categorical_transformer = OneHotEncoder(drop='first', handle_unknown='ignore')
             numerical_transformer = StandardScaler()
             categorical_cols, numerical_cols = identify_categorical_numerical(X_df)
@@ -152,13 +128,14 @@ class SequentialModelBasedOptimization(object):
             #prepare for training
             X= X_df.iloc[::]
             
-            #X = np.array([list(config.values()) for config, _ in self.R])  # Configurations as feature vectors
+            
             y = np.array([performance for _, performance in self.R])  # Error rates
             
             # Define a Gaussian Process model
-            kernel = C(1.0, (1e-4, 1e1)) * RBF(1.0, (1e-4, 1e1))
-            
-            internal_surrogate_model = GaussianProcessRegressor(kernel=kernel)
+            kernel = C(1.0, (1e-4, 1e1)) * Matern(length_scale=1.0, length_scale_bounds=(1e-4, 1e1), nu=2.5)
+
+            # Initialize GaussianProcessRegressor with the Matern kernel
+            internal_surrogate_model = GaussianProcessRegressor(kernel=kernel, alpha=1e-6)  # Alpha is noise level
             
             pipeline = Pipeline(steps=[
                 ('preprocessor', preprocessor),
@@ -166,10 +143,7 @@ class SequentialModelBasedOptimization(object):
             ])
             
             self.internal_surrogate_model = pipeline.fit(X, y)
-            #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-            #print(trained_model.predict(X_test))
-            
+      
             # Fit the model to the observations
             
             return self.internal_surrogate_model
@@ -184,14 +158,14 @@ class SequentialModelBasedOptimization(object):
         configuration
         """
         
-        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(10)]  # You can adjust the number of samples
+        
+        candidates = [self.config_space.sample_configuration().get_dictionary() for _ in range(20)]  
         
         candidates = [clean_configuration(self.config_space, each_candidate) for each_candidate in candidates]
-    
+        
         candidate_configs = pd.DataFrame([candidate for candidate in candidates])
         
-        theta = candidate_configs.iloc[::]  # Apply the same pre-processing steps as in the model
-        
+        theta = candidate_configs.iloc[::] 
         
         # Calculate the expected improvement for each candidate
         ei_values = self.expected_improvement(self.internal_surrogate_model, self.theta_inc_performance, theta)
@@ -221,18 +195,24 @@ class SequentialModelBasedOptimization(object):
         mu, sigma = model_pipeline.predict(theta, return_std=True)
         if f_star == None:
             f_star = mu
+        xi = 0.03  # Exploration parameter
+        f_star_exploration = f_star + xi
         sigma = np.maximum(sigma, 1e-9)  # Avoid division by zero
         
+        sigma_noise = np.maximum(sigma, 1e-2)
         # Calculate the Expected Improvement (EI)
+        # z = (f_star_exploration - mu) / sigma_noise
         z = (f_star - mu) / sigma
         
-        ei = (f_star - mu) * norm.cdf(z) + sigma * norm.pdf(z)
+        # ei = (f_star_exploration - mu) * norm.cdf(z) + sigma_noise * norm.pdf(z)
+        ei = (f_star- mu) * norm.cdf(z) + sigma * norm.pdf(z)
         
         return ei
         
-    def optimize(self, theta_new):
-        performance = test_real_world_model(self.config_space, theta_new)
+    def optimize(self,  theta_new):
+        #performance = test_real_world_model(self.config_space, theta_new)
         
+        performance = self.ex_surrogate_class.external_surrogate_predict(theta_new)
         return performance
     
         
@@ -244,57 +224,130 @@ class SequentialModelBasedOptimization(object):
         :param run: A tuple (configuration, performance) where performance is error rate
         """
         
+        #adding random candidate to R for new exploration area to avoid stagnant behaviour
+        # random_candidate = self.config_space.sample_configuration().get_dictionary()  
+        
+        # candidate = clean_configuration(self.config_space, random_candidate)
+        
+        # random_cand_perf = smbo.optimize(candidate)
+        
+        # self.R.append((candidate, random_cand_perf))
+        
         self.R.append(run)
+        
         
         if run[1] < self.theta_inc_performance:
             self.theta_inc_performance = run[1]
             self.theta_inc = run[0]
-        self.result_performance.append(self.theta_inc_performance)
         
-if __name__ == '__main__':
-    args = parse_args()
-    capital_phi = initial_perf(args)
+        self.result_performance.append(self.theta_inc_performance)
+
+import pickle
+
+class ExternalSurrogate():
+    def __init__(self, args, config_space):
+        df_data  = pd.read_csv(args.configurations_performance_file)
+        
+        self.sg = SurrogateModel(config_space)
+        
+        self.sg.model =  self.sg.fit(df_data)
+      
+        
+    def external_surrogate_predict(self, theta):
+        theta_val = dict(theta)
+        error_rate = self.sg.predict(theta_val)
+        return error_rate
+    
+    
+    
+    def get_initial_sample_config(self, config_space):
+            capital_phi = []
+            
+            
+            for _ in range(20):  # Sample 20 initial configurations
+                config = config_space.sample_configuration()    
+                self.sg.config_space = config_space
+                theta_val = dict(config)
+                error_rate = self.sg.predict(theta_val)
+                print(error_rate)
+                capital_phi.append((theta_val, error_rate))
+                
+            return capital_phi
+
+
+def eval_smbo(args, max_anchor, total_budget):
+    
+
     
     config_space = ConfigSpace.ConfigurationSpace.from_json(args.config_space_file)
-    config_space.seed(42) #fixed for plot reproducibility 
-    anchor_size =  Constant("anchor_size", 1600)
+    
+    
+   
+    
+    anchor_size =  Constant("anchor_size", max_anchor)
     
     config_space.add_hyperparameter(anchor_size)
-    smbo = SequentialModelBasedOptimization (config_space=config_space)
+    ex_surrogate_class = ExternalSurrogate(args=args, config_space=config_space)
+    capital_phi = ex_surrogate_class.get_initial_sample_config(config_space)
     
+    smbo = SequentialModelBasedOptimization (config_space=config_space, max_anchor=max_anchor, ex_surrogate_class=ex_surrogate_class)
     
     smbo.initialize(capital_phi)
-    total_budget = 12
-    budget_left = 12
-    each_performance = []
+    
+    budget_left = total_budget
+
+
     while budget_left:
-        print("Budget is", budget_left)
-        smbo.fit_model ()
+        smbo.fit_model()
         theta_new = smbo.select_configuration() 
         performance = smbo.optimize(theta_new)
         smbo.update_runs((theta_new , performance))
+        smbo.all_performances.append(performance)
+        
         budget_left = budget_left-1
-        print(performance)
-        each_performance.append(performance)
-    #plt.plot(range(total_budget), smbo.result_performance)
-    #plt.plot(range(total_budget), each_performance)
     
+        
+    return smbo.result_performance
     
-    min_performance = min(each_performance)
-    min_budget = each_performance.index(min_performance)
 
-    # Plot the performance curve
-    plt.plot(range(total_budget), each_performance, label='Performance', marker='o')
+def plot_value(total_budget, all_performances):
+    
+    plt.figure(figsize=(6, 6))
+    plt.plot(range(total_budget), all_performances, color='blue', label='Iterative Best Performances so far')
+    
 
-    # Mark the minimum performance on the plot
-    plt.annotate(f'Min: {min_performance:.4f}', xy=(min_budget, min_performance),
-                xytext=(min_budget + 1, min_performance + 0.02), 
-                arrowprops=dict(facecolor='red', shrink=0.05),
-                fontsize=12, color='red')
+    
+    min_performance = min(all_performances)
+
+    min_budget = all_performances.index(min_performance)
+
+    plt.scatter(min_budget, min_performance, color='red', zorder=5, label=' Best Performance')
+
+    # Add a horizontal line at the minimum performance point
+    plt.axhline(y=min_performance, color='red', linestyle='--', label=f'Best Score: {min_performance:.6f}')
+    # Get the current y-ticks
+    yticks = list(plt.yticks()[0])
+
+    # Add the minimum performance to the y-ticks if it's not already there
+    if min_performance not in yticks:
+        yticks.append(min_performance)
+        yticks = sorted(yticks)  # Sort the ticks to keep them in order
+
+    # Set the updated y-ticks
+    plt.yticks(yticks)
     plt.xlabel('Budget')
-    plt.ylabel('Performance')
-    plt.title('SMBO Performance with Minimum Marked')
-    plt.legend()
+    plt.ylabel('Guassian Regressor Performance')
+    plt.title('Performances tracked during SMBO')
     plt.grid(True)
+    plt.legend()
+    
+    plt.tight_layout()
     plt.show()
+    
+if __name__ == "__main__":
+    args = parse_args()
+    max_anchor = 16000
+    total_budget = 200
+    result_performances = eval_smbo(args, max_anchor=max_anchor, total_budget=total_budget)
+    plot_value(total_budget, result_performances)
     
